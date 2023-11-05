@@ -1,277 +1,191 @@
-from urllib.request import urlopen,Request
-from urllib.error import  HTTPError
+from urllib.request import urlopen, Request
+from urllib.error import HTTPError
 from bs4 import BeautifulSoup
 import re
 import json
 import requests
 import validators
-from time import time,sleep
-data = ''
-html = ''
-url = ''
-keyword = ''
-
+from time import time, sleep
 
 def is_valid_url(url):
-    if not (validators.url(url)):
+    if not validators.url(url):
         print("Please Enter a Valid URL")
         exit()
 
-
-def fetch_initialize(url):
-    global data
-    global html
+def fetch_page(url):
     try:
-        print('Fetching Web Page Please wait......')
+        print('Fetching Web Page. Please wait...')
         start_time = time()
         req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        html =urlopen(req).read()
+        html = urlopen(req).read()
         data = BeautifulSoup(html, "html.parser")
-        print('Total time taken to fetch Web page {} secoonds'.format(round(time()-start_time, 2)))
+        print(f'Total time taken to fetch the web page: {round(time() - start_time, 2)} seconds')
         sleep(1)
-
+        return data
     except HTTPError as e:
-        print(str(e))
+        print(f"Failed to fetch the web page: {str(e)}")
+        return None
 
-
-def seo_title_length(data):
+def analyze_title(data, keyword):
     print('\n\n')
-    print("1.0 Analysing Title")
+    print("1.0 Analyzing Title")
     if data.title:
-        if len(data.title.text) < 60:
-            length = "Your title length is {} which is under 60 characters \n {}".format(len(data.title.text), data.title.text)
+        title_text = data.title.text
+        if len(title_text) < 60:
+            length = f"Your title length is {len(title_text)} which is under 60 characters:\n{title_text}"
         else:
-            length = "Warning!! your title length is {} which exceed 60 character limit".format(len(data.title.text))
-    else:
-        return "Warning!! no title found in your Web page"
-        if keyword in data.title.text:
+            length = f"Warning!! Your title length is {len(title_text)} which exceeds the 60 character limit."
+
+        if keyword in title_text:
             print('Keyword Found in Title')
-        if keyword not in data.title.text:
+        else:
             print('Keyword not Found in Title')
-    return length
 
+        return length
+    else:
+        return "Warning!! No title found on your web page"
 
-def seo_title_stop_words(data):
+def analyze_stop_words(data):
     print('\n\n')
     word_count = 0
-    word_list =[]
-    print("2.0 Looking for Stop Words in you page title")
+    word_list = []
+    print("2.0 Looking for Stop Words in your page title")
 
     if data.title:
-        with open('stopwords.txt','r') as f:
+        with open('stopwords.txt', 'r') as f:
             for line in f:
-                if re.search(r'\b' + line.rstrip('\n')+ r'\b', data.title.text.casefold()):
+                if re.search(r'\b' + line.rstrip('\n') + r'\b', data.title.text.casefold()):
                     word_count += 1
                     word_list.append(line.rstrip('\n'))
+
         if word_count > 0:
-            stop_words = 'Warning!! found {} stop words in your title '.format(word_count)
-            stop_words += 'You should consider removing them {} '.format(word_list)
+            stop_words = f'Warning!! Found {word_count} stop words in your title. You should consider removing them: {word_list}'
         else:
             stop_words = "No stop words were found in your title"
+
+        return stop_words
     else:
-        stop_words = "Warning!! no title found in your Web page"
-    return stop_words
+        return "Warning!! No title found on your web page"
 
-
-def analyse_image_alt(data):
+def analyze_image_alt(data, keyword):
     print('\n\n')
-    print("3.0 Analysing Images on entire page...")
+    print("3.0 Analyzing Images on the entire page...")
     missing_alts = []
     keyword_found = []
+
     for a in data.find_all('a'):
         src = 'data-src'
 
         if a.img:
             try:
-                if len(a.img['data-src']) == 0:
+                if len(a.img.get('data-src', '')) == 0:
                     src = 'src'
             except KeyError:
                 src = 'src'
-                pass
 
             try:
-                if keyword in a.img['alt'].casefold():
+                if keyword in a.img.get('alt', '').casefold():
                     keyword_found.append(a.img[src])
-                if len(a.img['alt']) == 0:
+
+                if len(a.img.get('alt', '')) == 0:
                     missing_alts.append(a.img[src])
             except KeyError:
                 pass
-    print("3.1 Looking for Keyword in images... ")
 
-    if len(keyword_found) > 0:
-        print('Keyword found in {} times images'.format(len(keyword_found)))
-        for i in keyword_found:
-            print('{}:{}'.format(keyword, i))
+    print("3.1 Looking for Keyword in images...")
+
+    if keyword_found:
+        print(f'Keyword found in {len(keyword_found)} images')
+        for img_src in keyword_found:
+            print(f'{keyword}: {img_src}')
     else:
-        print('!! {} images found with matching keyword '.format(len(keyword_found)))
-    if len(missing_alts)> 0:
-        print('Warning!! {} images found with missing alt tag'.format(len(missing_alts)))
-        for i in missing_alts:
-            print(i)
+        print(f'No images found with a matching keyword')
+
+    if missing_alts:
+        print(f'Warning!! {len(missing_alts)} images found with missing alt tags')
+        for img_src in missing_alts:
+            print(img_src)
     else:
-        print('!! {} images found with missing alt tag'.format(len(missing_alts)))
+        print(f'No images found with missing alt tags')
 
-
-
-
-
-def analyse_meta_desc(data):
+def analyze_meta_desc(data, keyword):
     print('\n\n')
-    print("4.0 Analysing Metadata Description on your page")
+    print("4.0 Analyzing Metadata Description on your page")
 
-    desc = data.findAll('meta', {'name': 'description'})
+    desc = data.find('meta', {'name': 'description'})
     if desc:
-        desc = desc[0].get('content')
-        if len(desc) == 0:
-            return "'Warning Missing description"
-        elif len(desc) < 140:
-            return 'Description is too short (less than 140 characters): {0}'.format(desc)
-        elif len(desc) > 255:
-            return 'Description is too long (more than 255 characters): {0}'.format(desc)
-        elif keyword in desc:
-            return 'Keyword found in Description \nDescription:{}'.format(desc)
+        description_content = desc.get('content', '').strip()
+
+        if not description_content:
+            return "Warning: Missing description"
+
+        if len(description_content) < 140:
+            return f'Description is too short (less than 140 characters): {description_content}'
+        elif len(description_content) > 255:
+            return f'Description is too long (more than 255 characters): {description_content}'
+        elif keyword in description_content:
+            return f'Keyword found in Description:\nDescription: {description_content}'
         else:
-             return 'Keyword not found in Description \nDescription:{}'.format(desc)
+            return f'Keyword not found in Description:\nDescription: {description_content}'
+    else:
+        return "Warning: Metadata description tag does not exist on your page"
 
-
-
-def analyse_meta_keywords(data):
+def analyze_meta_keywords(data, keyword):
     print('\n\n')
-    print("5.0 Analysing Metadata Keyword on your page")
+    print("5.0 Analyzing Metadata Keywords on your page")
 
-    desc_key = data.findAll('meta', {'name': 'keywords'})
+    desc_key = data.find('meta', {'name': 'keywords'})
     if desc_key:
-        desc_key = desc_key[0].get('content')
-        if len(desc_key)== 0:
-            return "Warning Missing Keywords in meta tag"
-        elif keyword in desc_key:
-            return 'Keyword {} found in meta tag keywords {}'.format(keyword, desc_key)
+        keywords_content = desc_key.get('content', '').strip()
+
+        if not keywords_content:
+            return "Warning: Missing Keywords in meta tag"
+
+        if keyword in keywords_content:
+            return f'Keyword "{keyword}" found in meta tag keywords: {keywords_content}'
         else:
-            return 'Warning !! Keyword not found in meta tag keywords {}'.format(keyword, desc_key)
+            return f'Warning: Keyword "{keyword}" not found in meta tag keywords: {keywords_content}'
     else:
-        return "Warning metadata keyword tag does not exist in your page"
+        return "Warning: Metadata keywords tag does not exist on your page"
 
-
-def analyse_h1_heading(data):
+def analyze_h1_heading(data):
     print('\n\n')
-    print("6.0 Analysing H1 and H2 on your page")
+    print("6.0 Analyzing H1 and H2 on your page")
 
-    htags = data.findAll('h1')
-    htags2 = data.findAll('h2')
+    h1_tags = data.find_all('h1')
+    h2_tags = data.find_all('h2')
 
-    if not htags:
-        return "Warning!! missing H1 tag"
-    if not htags2:
-        return "Warning!! missing H2 tag"
-    else:
-        return "Found H1 and H2 tag on page"
+    if not h1_tags:
+        return "Warning: Missing H1 tags"
+    if not h2_tags:
+        return "Warning: Missing H2 tags"
 
+    return "Found H1 and H2 tags on the page"
 
-def analyse_a_tags(data):
+def analyze_a_tags(data):
     print('\n\n')
-    print("7.0 Analysing Anchor tags on page")
+    print("7.0 Analyzing Anchor tags on the page")
     no_title = []
     title = []
-    anchor = data.findAll('a', href=True)
-    for a in anchor:
+    anchor_tags = data.find_all('a', href=True)
+
+    for a in anchor_tags:
         if not a.get('title'):
             no_title.append(a.get('href'))
         elif a.get('title'):
             title.append(a.get('href'))
-        if a.text.lower().strip in ['click here', 'page', 'article']:
-            print('Anchor text contains generic text: {}'.format(a.text.lower().strip))
+
+        if a.text.lower().strip() in ['click here', 'page', 'article']:
+            print(f'Anchor text contains generic text: {a.text.lower().strip()}')
+
     if len(no_title) > 0:
-        print('Warning!! Total {} link found with missing title tag '.format(len(no_title)))
-        print('Displaying first 5 links with missing title tag')
-        for i in no_title[10: 15]:
-            print(i)
+        print(f'Warning: Total {len(no_title)} links found with missing title tags')
+        print('Displaying first 5 links with missing title tag:')
+        for link in no_title[:5]:
+            print(link)
 
-
-def social_shares():
+def social_shares(url):
     print('\n\n')
-    print("7.0 Analysing Social Media Impact of Web page")
+    print("8.0 Analyzing Social Media Impact of the web page")
 
-    fb_share_count = 0
-    update_time = ''
-    tweets = 0
-
-    try:
-        page = requests.get(
-            'https://graph.facebook.com/?id={}'.format(url))
-
-        fb_data = json.loads(page.text)
-        fb_share_count = fb_data['share']['share_count']
-        fb_comment_count = fb_data['share']['comment_count']
-        update_time = fb_data['og_object']['updated_time']
-        # fb_reaction_count = fb_data['engagement']['reaction_count']
-    except:
-        pass
-
-    try:
-        page = requests.get(
-            'http://public.newsharecounts.com/count.json?url={}'.format(url))
-
-        twitter_data = json.loads(page.text)
-        tweets = twitter_data['count']
-
-        # fb_reaction_count = fb_data['engagement']['reaction_count']
-    except:
-        pass
-
-    social = {
-        'shares': fb_share_count,
-        'Update Time': update_time,
-        'tweets': tweets
-    }
-    return 'Number of Facebook Share:{} Number of Twitter Tweets {}'.format(social['shares'], social['tweets'])
-
-
-def google_checker(data):
-    print('\n\n')
-
-    print("8.0 GOOGLE PAGESPEED INSIGHTS RESULTS")
-
-    page = requests.get('https://www.googleapis.com/pagespeedonline/v1/runPagespeed?url={}'
-                        .format(url))
-    google_data = json.loads(page.text)
-    try:
-        print('Google page score {}/100'.format(google_data['score']))
-        print('Page Stats')
-        for key, value in google_data['pageStats'].items():
-            print('{}:{}  '.format(key, value))
-
-        print('\nRules negatively impacting score:')
-        for i in google_data['formattedResults']['ruleResults']:
-            print('{}: {}'.format(google_data['formattedResults'] \
-                                ['ruleResults'][i]['localizedRuleName'], \
-                            google_data['formattedResults']['ruleResults'][i] \
-                                ['ruleImpact']))
-
-    except Exception as e:
-        print(str(e))
-        pass
-
-
-
-
-
-
-
-def main():
-    global keyword, url
-    url = input("which page would you like to open: Enter full URL:")
-    is_valid_url(url)
-    fetch_initialize(url)
-    keyword = input("Enter the SEO keyword :").casefold()
-    sleep(1)
-    print(seo_title_length(data))
-    print(seo_title_stop_words(data))
-    analyse_image_alt(data)
-    print(analyse_meta_desc(data))
-    print(analyse_meta_keywords(data))
-    print(analyse_h1_heading(data))
-    analyse_a_tags(data)
-    print(social_shares())
-    google_checker(data)
-
-main()
+    fb_share_count = 
